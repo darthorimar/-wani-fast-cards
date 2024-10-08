@@ -1,9 +1,9 @@
 'use client'
 
 import { Center } from '@/app/componets/center'
-import { getKanjiForLevel, getWanikaniStatus, Kanji, WanikaniStatus } from '@/app/wanikani/WaniKani'
+import { getKanjiForLevel, getStartedKanjiIds, getWanikaniStatus, Kanji, WanikaniStatus } from '@/app/wanikani/WaniKani'
 import { Button, Card, CardBody } from '@nextui-org/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import React from 'react'
 import { useEffect, useState } from 'react'
 import { MdArrowBack } from 'react-icons/md'
@@ -13,6 +13,8 @@ export default function Page(
     { params }: { params: { level: number } }
 ) {
     const [rerenderCount, setRerenderCount] = useState(0)
+    const searchParams = useSearchParams()
+    const onlyStarted = searchParams.get('started') === 'true'
 
     function rerender() {
         setRerenderCount(c => c + 1)
@@ -21,7 +23,7 @@ export default function Page(
     return <>
         <Navigation rerender={rerender} />
         <Center>
-            <Content level={params.level} rerender={rerender} rerenderCount={rerenderCount} />
+            <Content level={params.level} onlyStarted={onlyStarted} rerender={rerender} rerenderCount={rerenderCount} />
         </Center>
     </>
 }
@@ -41,21 +43,28 @@ function ActionButton(
 }
 
 function Content(
-    { level, rerender, rerenderCount }: { level: number, rerender: () => void, rerenderCount: number }
+    { level, onlyStarted, rerender, rerenderCount }: { level: number, onlyStarted: boolean, rerender: () => void, rerenderCount: number }
 ) {
-    const [kanjis, setKanjis] = useState<Kanji[]>([])
+    const [kanjis, setKanjis] = useState<Kanji[] | null>(null)
     const [status, setStatus] = useState<WanikaniStatus>('loading')
     const router = useRouter()
 
     useEffect(() => {
-        Promise.all([getWanikaniStatus(), getKanjiForLevel(level)]).then(([status, k]) => {
+        Promise.all(
+            [
+                getWanikaniStatus(),
+                getKanjiForLevel(level),
+                onlyStarted ? getStartedKanjiIds(level) : Promise.resolve(null),
+            ]
+        ).then(([status, ks, started]) => {
             setStatus(status)
-            if (k === null) {
+            if (ks === null) {
                 return
             }
-            setKanjis(shuffled(k))
+            const kanjisFiltered = ks.filter(k => started == null || started.includes(k.id))
+            setKanjis(shuffled(kanjisFiltered))
         })
-    }, [rerenderCount, level])
+    }, [rerenderCount, level, onlyStarted])
 
     if (status === 'no_key' || status === 'invalid_key') {
         return <div className='flex flex-col gap-4'>
@@ -74,13 +83,20 @@ function Content(
         </div>
     }
 
-    if (status === 'loading') {
+    if (status === 'loading' || kanjis === null) {
         return <div>Loading...</div>
     }
 
-    return <div className='flex flex-col items-center gap-4' key={rerenderCount}>
+    if (kanjis.length === 0 && onlyStarted) {
+        return <div className='flex flex-col gap-4 items-center'>
+            <div className='text-xl'> No kanji are started at level {level}</div>
+            <Button color='secondary' variant='bordered' onPress={() => router.push('/')}>Chose another level</Button>
+        </div>
+    }
+
+    return <div className='flex flex-col items-center gap-4'>
         <h1 className='font-bold text-3xl mb-4'>Kanji for level {level}</h1>
-        <LearnKanji kanjis={kanjis} rerender={rerender} />
+        <LearnKanji kanjis={kanjis} rerender={rerender} key={kanjis.length} />
     </div>
 }
 

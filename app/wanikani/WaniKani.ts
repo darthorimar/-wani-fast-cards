@@ -26,11 +26,20 @@ export async function getKanjiForLevel(level: number): Promise<Kanji[] | null> {
     const json = await response.json()
     return json.data.map((d: any) => {
         return {
+            id: d.id,
             kanji: d.data.characters,
             meaning: d.data.meanings.find((m: any) => m.primary).meaning,
             reading: d.data.readings.find((r: any) => r.primary).reading,
         }
     })
+}
+
+export async function getStartedKanjiIds(level: number): Promise<number[] | null> {
+    const headers = createWanikaniHeaders()
+    const response = await fetch(`${API_BASE_URL}/assignments?subject_types=kanji&started=true&levels=${level}`, { headers: headers })
+    if (!response.ok) return null
+    const json = await response.json()
+    return json.data.map((d: any) => d.data.subject_id)
 }
 
 function createWanikaniHeaders(): Headers {
@@ -42,6 +51,7 @@ function createWanikaniHeaders(): Headers {
 const API_BASE_URL = 'https://api.wanikani.com/v2'
 
 export interface Kanji {
+    id: number
     kanji: string
     meaning: string
     reading: string
